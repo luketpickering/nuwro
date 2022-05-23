@@ -35,7 +35,28 @@
 #include "rew/rewparams.h"
 #include "lepevent.h"
 #include "output.h"
+#include "root_eventstream.h"
 
+#ifdef HEPMC3_ENABLED
+#include "hepmc3_eventoutstream.h"
+#endif
+
+EventOutStream *MakeEventOutStream(std::string filename, params const & p1){
+	switch(p1.output_format){
+		case 0:{
+			return new ROOTEventOutStream(filename);
+		}
+#ifdef HEPMC3_ENABLED
+		case 1:{
+			return new HepMC3EventOutStream<HepMC3::WriterRootTree>(filename);
+		}
+#endif
+		default: {
+			std::cout << "Invalid output_format selected: " << p1.output_format << std::endl;
+			exit(7);
+		}
+	}
+}
 
 extern double SPP[2][2][2][3][40];
 //extern double sppweight;
@@ -603,17 +624,13 @@ void NuWro::test_events(params & p)
 		hist hq0((char*)"q0",0,(p.beam_type==0 ? atof(p.beam_energy.c_str())*MeV : 2*GeV),100);
 		hist hqv((char*)"qv",0,(p.beam_type==0 ? atof(p.beam_energy.c_str())*MeV : 2*GeV),100);
 		hist hT((char*)"T",0,2*GeV,100);
-		TFile *te=NULL;
-		TTree *t1=NULL;
-		event *e=NULL;
+
+		EventOutStream *eostream = NULL;
+
 		if(p.save_test_events)
 		{	
 			dismode=false;
-			te=new TFile((string("weighted.")+a.output).c_str(),"recreate");						
-			t1 = new TTree ("treeout", "Tree of events");
-			e = new event ();
-			t1->Branch ("e", "event", &e);
-			delete e;
+			eostream = MakeEventOutStream(string("weighted.")+a.output, p);
 		}
 
 		refresh_dyn(p);
@@ -621,7 +638,7 @@ void NuWro::test_events(params & p)
 		int saved=0;
 		for (int i = 0; i < p.number_of_test_events; i++)
 		{
-			e = new event ();
+			event *e = new event ();
 			int k= _procesy.choose(); 
 			e->dyn = _procesy.dyn(k); // choose dynamics
 			if(_mixer)
@@ -657,7 +674,7 @@ void NuWro::test_events(params & p)
 					break;
 				case 1: 
 					finishevent(e, p);
-					t1->Fill ();
+					eostream->PushEvent(*e);
 					break;
 				case 2:
 					if(e->weight>0)
@@ -665,7 +682,7 @@ void NuWro::test_events(params & p)
 						saved++;
 						e->weight=e->weight*saved/(i+1);
 						finishevent(e, p);
-						t1->Fill ();						
+						eostream->PushEvent(*e);						
 					}
 					break;
 				default:
@@ -676,10 +693,8 @@ void NuWro::test_events(params & p)
 			delete e;
 			raport(i+1,p.number_of_test_events,"test events ready... ",1000,-1,bool(a.progress));
 		}						 // end of nuwro loop
-		if(p.save_test_events)
-		{
-			te->Write ();
-			te->Close ();
+		if(eostream){
+			delete eostream;
 		}
 
 		cout<<endl;
@@ -788,16 +803,13 @@ void NuWro::real_events(params& p)
 
 	frame_top("Run real events");
 
-	event *e = new event;
-
 	string output=a.output;
 	int l=output.length();
 	if(l<5 || string(".root")!=output.c_str()+l-5)
 		output=output+".root";
-	TFile *ff = new TFile (output.c_str(), "recreate");
-	TTree *tf = new TTree ("treeout", "Tree of events");
-	tf->Branch ("e", "event", &e);
-	delete e;
+
+	EventOutStream *eostream = MakeEventOutStream(output, p);
+
 	TH1 * xsections= new TH1D("xsections","xsections",_procesy.size(),0,_procesy.size());
 	for(int i=0;i<_procesy.size();i++)
 	{
@@ -818,16 +830,13 @@ void NuWro::real_events(params& p)
 			if(_procesy.desired(k)>0)
 			{
 				sprintf(filename,"%s.%d.part",a.output,k);
-				TFile *f1 = new TFile (filename, "recreate");
-				TTree *t1 = new TTree ("treeout", "Tree of events");
 
-				e = new event ();
-				t1->Branch ("e", "event", &e);
-				delete e;
+				//Use the root file here for random access
+				ROOTEventOutStream *eostream_part = new ROOTEventOutStream(filename);
 
 				while(_procesy.ready(k)<_procesy.desired(k))
 				{
-					e = new event ();
+					event *e = new event ();
 					e->dyn = _procesy.dyn(k);
 
 					if(_mixer)
@@ -842,27 +851,25 @@ void NuWro::real_events(params& p)
 						e->weight=_procesy.total();
 						//~ if(_detector and _beam->nu_per_POT() != 0)
 							//~ e->POT=e->weight * _detector->nucleons_per_cm2() / _beam->nu_per_POT();
-						t1->Fill ();
+						eostream_part->PushEvent(*e);
 					}
 					delete e;
 
 					raport(_procesy.ready(k),_procesy.desired(k),"events ready... ",1000,_procesy.dyn(k),bool(a.progress));
 				}
-				f1->Write ();
+				eostream_part->Write();
+				
 
 		// elimination of spurious events for dynamics k
 		// by copying only last desired[k] events to outfile
 				if(p.mixed_order==0)
 				{
 					cout<<endl;
-					int nn = t1->GetEntries ();
+					int nn = eostream_part->GetEntries();
 					int start = nn-_procesy.desired(k);
 					for (int jj = start; jj < nn; jj++)
 					{
-						e = new event();
-						t1->GetEntry (jj);
-						tf->Fill ();
-						delete e;
+						eostream->PushEvent(*eostream_part->GetEntry(jj));
 						raport(jj-start+1,nn-start,"events copied... ",100,_procesy.dyn(k),bool(a.progress));
 					}
 					cout<<endl;
@@ -870,8 +877,7 @@ void NuWro::real_events(params& p)
 				else
 					cout<<endl;
 
-				f1->Close ();
-				delete f1;
+				delete eostream_part;
 				if(p.mixed_order==0)
 					unlink(filename);
 			};
@@ -880,25 +886,16 @@ void NuWro::real_events(params& p)
 	//////////////////////////////////////////////////////////////////////////////////////
 	if(p.mixed_order)
 	{
-		TFile *f[_procesy.size()];
-		TTree *t[_procesy.size()];
+		ROOTEventInStream *eistream_parts[_procesy.size()];
 		int n[_procesy.size()],u[_procesy.size()];
 		int ile=0;
-		e=new event();
+
 		for (int k = 0; k < _procesy.size(); k++)
 			if((u[k]=_procesy.desired(k))>0)
 		{
 			sprintf(filename,"%s.%d.part",a.output,k);
-			f[k] = new TFile (filename);
-			t[k] = (TTree*) f[k]->Get("treeout");
-			if(t[k]==NULL)
-			{
-				cerr<< "tree \"treeout\" not found in file \""<<filename<<"\""<<endl;
-				exit(6);
-			}
-
-			t[k]->SetBranchAddress("e", &e);
-			n[k]=t[k]->GetEntries();
+			eistream_parts[k] = new ROOTEventInStream(filename);
+			n[k]=eistream_parts[k]->GetEntries();
 			ile+=u[k];
 		}
 		int nn=ile;
@@ -908,27 +905,23 @@ void NuWro::real_events(params& p)
 			int x=frandom()*ile;
 			while(x>=u[i])
 				x-=u[i++];
-			t[i]->GetEntry(n[i]-u[i]);
-			tf->Fill();
+			eostream->PushEvent(*eistream_parts[i]->GetEntry(n[i]-u[i]));
 			ile--;
 			u[i]--;
 			raport(nn-ile,nn,"events copied... ",100,i,bool(a.progress));
 		}
-		delete e;
 		for (int k = 0; k < _procesy.size(); k++)
 			if(_procesy.desired(k))
 		{
-			f[k]->Close();
-			delete f[k];
+			delete eistream_parts[k];
 			sprintf(filename,"%s.%d.part",a.output,k);
 			unlink (filename);
 		}
 	}
-	ff->Write ();
-	ff->Close ();
+	
 	cout << "        100. % of real events copied...  " << endl;
 	_progress.close();
-	delete ff;
+	delete eostream;
 	_procesy.report();
 	pot_report(cout,true);
 	if(_detector)
@@ -944,42 +937,25 @@ void NuWro::real_events(params& p)
 
 void NuWro::kaskada_redo(string input,string output)
 {
-	event *e=new event;
 
-	TFile *fi = new TFile (input.c_str());
-	TTree* ti = (TTree*) fi->Get("treeout");
-	if(ti==NULL)
-	{
-		cerr<< "tree \"treeout\" not found in file \""<<input<<"\""<<endl;
-		exit(7);
-	}
-	ti->SetBranchAddress("e", &e);
 
-	TFile *ff= new TFile(output.c_str(),"recreate");
-	TTree *tf = new TTree("treeout","Tree of events");
-	tf->Branch("e","event",&e);
+	ROOTEventInStream eistream(input);
 
-	int nn = ti->GetEntries ();
+	EventOutStream *eostream = MakeEventOutStream(output, p);
+
+	int nn = eistream.GetEntries();
 	for (int i = 0; i < nn; i++)
 	{
-		//		e = new event();
-		ti->GetEntry (i);
-		e->clear_fsi();
-		finishevent(e,p);
-		tf->Fill ();
-		//		delete e;
+		event e = *eistream.GetEntry(i);
+		e.clear_fsi();
+		finishevent(&e,p);
+		eostream->PushEvent(e);
 		//if(i%1000==0)
 		//cout<<i/1000<<"/"<<nn/1000<<"\r"<<endl;
-		raport(i+1,nn," % events processed...",100,e->dyn,bool(a.progress));
+		raport(i+1,nn," % events processed...",100,e.dyn,bool(a.progress));
 	}
 	cout<<endl;
-	fi->Close ();
-	delete fi;
-
-	ff->Write();
-	ff->Close();
-	delete e;
-	delete ff;
+	delete eostream;
 	cout<<"Output: \""<<output<<"\""<<endl;
 }
 

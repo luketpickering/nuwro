@@ -27,6 +27,16 @@
       <option key="2">2 - Make weighted events from non-zero test events</option>
     </options>
   </param>
+  <param name="output_format" type="select" ctype="int" default="0">
+    <description>
+      0 - event1 root tree (default)
+      1 - HepMC3 root tree
+    </description>
+    <options>
+      <option key="0">0 - event1 root tree - default</option>
+      <option key="1">1 - HepMC3 root tree </option>
+    </options>
+  </param>
   <param name="user_events" type="hidden" ctype="int" default="0">
     <description>Enable axial mass analysis</description>
     <conditions>

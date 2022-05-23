@@ -15,18 +15,23 @@ DEBUG         = 1
 #DEBUGON = -g
 ifeq ($(OS),Darwin)
   # Flags for OSX
-  CXXFLAGS      = `${ROOTSYS}/bin/root-config --cflags` -fPIC -O2 $(DEBUGON) -I src -Wall -Wno-unused-variable -Wno-sign-compare -Wno-unused-function -Wno-unused-but-set-variable -Wreorder -Wmissing-braces $(QTINCLUDEDIRS) -DVERSION=\"$(VERSION)\"
+  CXXFLAGS      += `${ROOTSYS}/bin/root-config --cflags` -fPIC -O2 $(DEBUGON) -I src -Wall -Wno-unused-variable -Wno-sign-compare -Wno-unused-function -Wno-unused-but-set-variable -Wreorder -Wmissing-braces $(QTINCLUDEDIRS) -DVERSION=\"$(VERSION)\"
 else
   # Flags for others
- CXXFLAGS      = `${ROOTSYS}/bin/root-config --cflags` -fPIC -O2 $(DEBUGON) -I src -Wl,--no-as-needed -Wall -Wno-unused-variable -Wno-sign-compare -Wno-unused-function -Wno-unused-but-set-variable -Wreorder -Wmissing-braces $(QTINCLUDEDIRS) -DVERSION=\"$(VERSION)\"
+  CXXFLAGS      += `${ROOTSYS}/bin/root-config --cflags` -fPIC -O2 $(DEBUGON) -I src -Wl,--no-as-needed -Wall -Wno-unused-variable -Wno-sign-compare -Wno-unused-function -Wno-unused-but-set-variable -Wreorder -Wmissing-braces $(QTINCLUDEDIRS) -DVERSION=\"$(VERSION)\"
 # CXXFLAGS      = `${ROOTSYS}/bin/root-config --cflags` --std=c++17 -fPIC -O2 $(DEBUGON) -I src -Wl,--no-as-needed -Wall -Wno-deprecated-register -Wno-unused-variable -Wno-sign-compare -Wno-unused-function -Wno-unused-but-set-variable -Wno-reorder $(QTINCLUDEDIRS)
  
 endif
-LDFLAGS       = `${ROOTSYS}/bin/root-config --libs` -lPythia6  -lEG -lEGPythia6 -lGeom -lMinuit -lgfortran $(QTLIBS)
+LDFLAGS       += `${ROOTSYS}/bin/root-config --libs` -lPythia6  -lEG -lEGPythia6 -lGeom -lMinuit -lgfortran $(QTLIBS)
 LD            = g++
 CXX           = g++
 CC            = g++
 FC            = gfortran
+
+ifneq (, $(shell which HepMC3-config))
+  CXXFLAGS += -DHEPMC3_ENABLED $(shell HepMC3-config --cflags) -std=c++11
+  LDFLAGS += $(shell HepMC3-config --libs) $(shell HepMC3-config --rootIO)
+endif
 
 %.o: %.cc
 		g++ ${CXXFLAGS} -c $< -o $@
