@@ -48,8 +48,16 @@ EventOutStream *MakeEventOutStream(std::string filename, params const & p1){
 		}
 #ifdef HEPMC3_ENABLED
 		case 1:{
-			return new HepMC3EventOutStream<HepMC3::WriterRootTree>(filename);
+			return new HepMC3EventOutStream<HepMC3::WriterAscii>(filename, p1);
 		}
+		case 2:{
+			return new HepMC3EventOutStream<HepMC3::WriterRootTree>(filename, p1);
+		}
+#ifdef HEPMC3_ENABLE_PROTOBUFIO
+		case 3:{
+			return new HepMC3EventOutStream<HepMC3::Writerprotobuf>(filename, p1);
+		}
+#endif
 #endif
 		default: {
 			std::cout << "Invalid output_format selected: " << p1.output_format << std::endl;

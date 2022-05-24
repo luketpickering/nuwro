@@ -29,8 +29,8 @@ CC            = g++
 FC            = gfortran
 
 ifneq (, $(shell which HepMC3-config))
-  CXXFLAGS += -DHEPMC3_ENABLED $(shell HepMC3-config --cflags) -std=c++11
-  LDFLAGS += $(shell HepMC3-config --libs) $(shell HepMC3-config --rootIO)
+  CXXFLAGS += -DHEPMC3_ENABLED $(shell HepMC3-config --cflags) $(shell HepMC3-config --optionalflags) -std=c++11
+  LDFLAGS += $(shell HepMC3-config --libs) $(shell HepMC3-config --rootIO) $(shell HepMC3-config --protobufIO)
 endif
 
 %.o: %.cc
@@ -45,6 +45,10 @@ TRGTS = $(addprefix $(BIN)/,\
 		# test_beam_rf test_makehist test_nucleus test_beam 
         # fsi niwg ladek_topologies test mb_nce_run ganalysis 
         # )
+
+ifneq (, $(shell which HepMC3-config))
+	TRGTS += $(BIN)/nuwro2hepmc
+endif
 
 DIS= charge.o LeptonMass.o parameters.o grv94_bodek.o dis_cr_sec.o  dis_nc.o dis_cc_neutron.o delta.o dis2res.o \
 	 dis_cc_proton.o fragmentation.o fragmentation_nc.o fragmentation_cc.o singlepion.o \
@@ -99,6 +103,9 @@ $(BIN)/nuwro2nuance: $(EVENT_OBJS) src/nuwro2nuance.o
 		$(LINK.cc) $^ -o $@
 
 $(BIN)/nuwro2rootracker: $(EVENT_OBJS) src/nuwro2rootracker.o
+		$(LINK.cc) $^ -o $@
+
+$(BIN)/nuwro2hepmc: $(EVENT_OBJS) src/nuwro2hepmc.o
 		$(LINK.cc) $^ -o $@
 
 $(BIN)/fsi: src/scatter.o src/kaskada7.o src/Interaction.o src/input_data.o src/data_container.o src/nucleus.o  src/nucleus_data.o src/isotopes.o src/elements.o\
